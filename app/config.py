@@ -21,5 +21,9 @@ ALLOWED_ORIGINS = [
     for origin in os.environ.get('ALLOWED_ORIGINS', '*').split(',')
     if origin.strip()
 ] or ['*']
+# Model service that makes the predictions (empty = use the model file in model/).
+MODEL_API_URL = os.environ.get('MODEL_API_URL', '').strip().rstrip('/')
+MODEL_API_KEY = os.environ.get('MODEL_API_KEY', '').strip()
+MODEL_API_TIMEOUT = float(os.environ.get('MODEL_API_TIMEOUT', '120') or 120)
 UI_API_BASE_URL = os.environ.get('UI_API_BASE_URL', '').strip().rstrip('/')
 UI_API_KEY = os.environ.get('UI_API_KEY', '').strip() or API_KEY

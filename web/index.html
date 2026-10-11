@@ -222,6 +222,15 @@ async function waitForApi() {
   $('status').className = 'badge ok';
   $('status').replaceChildren(el('span', {className: 'dot'}), 'Model API ready');
 }
+function showBusy(text) {
+  $('status').className = 'badge';
+  $('status').replaceChildren(el('span', {className: 'spinner'}), text);
+}
+function showReady() {
+  $('status').className = 'badge ok';
+  $('status').replaceChildren(el('span', {className: 'dot'}),
+    info && info.model_api_url ? 'Model service connected' : 'Model API ready');
+}
 
 async function init() {
   document.querySelectorAll('.origin').forEach(node => node.textContent = API_URL);
@@ -249,6 +258,7 @@ async function loadPlace() {
   const query = `place=${encodeURIComponent(name)}&start=${$('start').value}&end=${$('end').value}`;
   $('placeNote').className = 'sub';
   $('placeNote').textContent = 'Loading...';
+  if (info.model_api_url) showBusy('Asking the model service (it may be waking up)...');
   try {
     const hourly = await getJson(`/api/august?${query}&resolution=hourly`);
     const daily = await getJson(`/api/august?${query}&resolution=daily`);
@@ -266,7 +276,9 @@ async function loadPlace() {
     renderChart(shown, hourly.metrics);
     renderCalendar(daily);
     $('fPlace').value = place.name;
+    showReady();
   } catch (error) {
+    if (info.model_api_url) { $('status').className = 'badge'; $('status').textContent = 'Model service not responding'; }
     $('placeNote').className = 'error';
     $('placeNote').textContent = error.message;
   }
@@ -421,6 +433,7 @@ function renderAbout() {
   const table = el('table');
   const rows = [
     ['Model', `${info.model} — ${info.estimator}`],
+    ['Predictions from', info.model_api_url ? `${info.model_source}: ${info.model_api_url}/predict` : info.model_source],
     ['Input features', info.features.join(', ')],
     ['Places supported', `${info.supported_places} sensors (device_name is one-hot encoded)`],
     ['Validation', `MAE ${metrics.mae_ug_m3} µg/m³ · RMSE ${metrics.rmse_ug_m3} µg/m³ · R² ${metrics.r2} — ${metrics.setup}`],

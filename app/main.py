@@ -177,6 +177,12 @@ PREDICT_EXAMPLES = {
 }
 
 
+@app.exception_handler(predictor.ModelServiceError)
+async def model_service_error(request, error):
+    return JSONResponse(status_code=502, content={
+        'detail': f'{error} The model service may be waking up; try again in a minute.'})
+
+
 @app.exception_handler(RequestValidationError)
 async def validation_error(request, error):
     messages = []
@@ -227,7 +233,8 @@ def _row_features(row, position):
 # --------------------------------------------------------------------------
 @app.get('/health')
 def health():
-    return {'status': 'ok', 'model_loaded': predictor.pipeline is not None}
+    return {'status': 'ok', 'model_loaded': predictor.pipeline is not None,
+            'model_source': predictor.model_source()}
 
 
 @app.get('/config.js', include_in_schema=False)
@@ -243,6 +250,8 @@ def ui_config():
 def model_info():
     return {
         'model': predictor.model_name,
+        'model_source': predictor.model_source(),
+        'model_api_url': config.MODEL_API_URL or None,
         'estimator': repr(predictor.pipeline.steps[-1][1]),
         'numeric_features': predictor.numeric_features,
         'categorical_features': predictor.categorical_features,
