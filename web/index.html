@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AirQo PM2.5 dashboard</title>
+<link rel="icon" href="data:,">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
@@ -23,7 +24,8 @@
   h1 { font-size: 26px; margin: 0; letter-spacing: -0.02em; }
   h2 { font-size: 20px; margin: 0 0 4px; }
   .sub { color: var(--muted); font-size: 15px; margin: 0; }
-  main { padding: 20px 0 48px; display: grid; gap: 18px; }
+  main { padding: 20px 0 48px; display: grid; gap: 18px; grid-template-columns: minmax(0, 1fr); }
+  main > *, .two > *, .stats > *, .cal > * { min-width: 0; }
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 18px; box-shadow: 0 1px 2px rgba(16,24,40,.05); min-width: 0; }
   .head { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; justify-content: space-between; margin-bottom: 12px; }
   .badge { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--border); border-radius: 999px; padding: 6px 14px; font-size: 15px; font-weight: 500; background: var(--surface); }
@@ -70,7 +72,13 @@
   td, th { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
   code { background: var(--soft); padding: 1px 6px; border-radius: 5px; font-size: 14px; }
   @media (max-width: 860px) {
-    .controls, .form-grid, .two { grid-template-columns: 1fr; }
+    .controls, .form-grid, .two { grid-template-columns: minmax(0, 1fr); }
+    .tag { white-space: normal; }
+    th, td { display: block; overflow-wrap: anywhere; }
+    th { white-space: normal !important; border-bottom: 0; padding-bottom: 0; }
+    .cal { gap: 4px; }
+    .cal .day { padding: 4px; font-size: 13px; overflow: hidden; }
+    .cal .day small { font-size: 11px; }
     .stats { grid-template-columns: 1fr; }
     .stat .value { font-size: 34px; }
     #chart { height: 360px; }
@@ -278,7 +286,9 @@ async function loadPlace() {
     $('fPlace').value = place.name;
     showReady();
   } catch (error) {
-    if (info.model_api_url) { $('status').className = 'badge'; $('status').textContent = 'Model service not responding'; }
+    // Only a failed call to the model service changes the badge, not a mistyped place.
+    if (info.model_api_url && /model service/i.test(error.message)) { $('status').className = 'badge'; $('status').textContent = 'Model service not responding'; }
+    else showReady();
     $('placeNote').className = 'error';
     $('placeNote').textContent = error.message;
   }
@@ -404,7 +414,7 @@ function formBody() {
 }
 function updateCurl(body) {
   $('curl').textContent = `curl -X POST "${API_URL}/predict" \\\n  -H "Content-Type: application/json" \\\n` +
-    (API_KEY ? `  -H "X-API-Key: <your-api-key>" \\\n` : '') + `  -d'${JSON.stringify(body)}'`;
+    (API_KEY ? `  -H "X-API-Key: <your-api-key>" \\\n` : '') + `  -d '${JSON.stringify(body)}'`;
 }
 async function runPredict() {
   const body = formBody();
