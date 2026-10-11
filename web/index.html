@@ -189,6 +189,8 @@ const CONFIG = window.APP_CONFIG || {};
 const API = (CONFIG.apiBaseUrl || '').replace(/\/$/, '');
 const API_KEY = CONFIG.apiKey || '';
 const API_URL = API || location.origin;
+// Model name shown in the "About the model" box (set by hand, not read from the API).
+const MODEL_DISPLAY_NAME = 'Random Forest (untuned)';
 let info = null, places = [], map = null, markers = {};
 
 const getJson = async (url, options) => {
@@ -445,8 +447,7 @@ function renderAbout() {
   const about = $('about');
   const table = el('table');
   const rows = [
-    ['Model', info.estimator ? `${info.model} — ${info.estimator}` : info.model],
-    ['Model name from', info.model_name_source],
+    ['Model', MODEL_DISPLAY_NAME],
     ['Predictions from', info.model_api_url ? `${info.model_source}: ${info.model_api_url}/predict` : info.model_source],
     ['Input features', info.features.join(', ')],
     ['Places supported', `${info.supported_places} sensors (device_name is one-hot encoded)`],
