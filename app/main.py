@@ -248,11 +248,18 @@ def ui_config():
 
 @app.get('/api/model-info', dependencies=PROTECTED)
 def model_info():
+    name, name_source = predictor.current_model()
+    # Details read from the model file are only shown when they describe the
+    # model that is actually answering.
+    same_model = name == predictor.model_name
+    remote = predictor.remote_model_info() or {}
     return {
-        'model': predictor.model_name,
+        'model': name,
+        'model_name_source': name_source,
         'model_source': predictor.model_source(),
         'model_api_url': config.MODEL_API_URL or None,
-        'estimator': repr(predictor.pipeline.steps[-1][1]),
+        'estimator': repr(predictor.pipeline.steps[-1][1]) if same_model else None,
+        'model_service_features': remote.get('features'),
         'numeric_features': predictor.numeric_features,
         'categorical_features': predictor.categorical_features,
         'features': predictor.feature_columns,
@@ -263,7 +270,7 @@ def model_info():
         'time_convention': TIME_CONVENTION,
         'aqi_categories': categories_table(),
         'missing_color': MISSING_COLOR,
-        'validation_metrics': validation_metrics,
+        'validation_metrics': validation_metrics if name == validation_metrics.get('model_name') else None,
         'limitation': 'Predictions are model estimates that rely on temperature, humidity and '
                       'calendar features only; any assumed inputs are labelled.',
         'max_rows_per_request': MAX_ROWS,
@@ -372,7 +379,7 @@ def august_series(
         'end': end_time.strftime('%Y-%m-%dT%H:%M:%SZ'),
         'resolution': resolution,
         'count': len(points),
-        'model': predictor.model_name,
+        'model': predictor.current_model()[0],
         'input_source_summary': {
             'observed_share': round(observed_share, 3),
             'assumed_profile_share': round(1 - observed_share, 3),
@@ -436,7 +443,7 @@ def predict(body: Union[PredictBatch, PredictRow] = Body(..., openapi_examples=P
             'aqi_category': category,
             'color': category_color(category),
         })
-    return {'count': len(predictions), 'model': predictor.model_name, 'predictions': predictions}
+    return {'count': len(predictions), 'model': predictor.current_model()[0], 'predictions': predictions}
 
 
 app.post('/predict', response_model=PredictResponse, summary='Predict PM2.5', dependencies=PROTECTED)(predict)

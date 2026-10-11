@@ -220,15 +220,17 @@ const setTag = (node, label) => {
 };
 
 async function waitForApi() {
+  let ready = null;
   for (;;) {
     try {
       const health = await getJson('/health');
-      if (health.status === 'ok') break;
+      if (health.status === 'ok') { ready = health; break; }
     } catch (error) { /* instance still waking up */ }
     await sleep(3000);
   }
   $('status').className = 'badge ok';
   $('status').replaceChildren(el('span', {className: 'dot'}), 'Model API ready');
+  return ready;
 }
 function showBusy(text) {
   $('status').className = 'badge';
@@ -242,7 +244,8 @@ function showReady() {
 
 async function init() {
   document.querySelectorAll('.origin').forEach(node => node.textContent = API_URL);
-  await waitForApi();
+  const health = await waitForApi();
+  if (health.model_source === 'remote model service') showBusy('Waking up the model service...');
   try {
     [info, {places}] = await Promise.all([getJson('/api/model-info'), getJson('/api/places')]);
   } catch (error) {
@@ -442,11 +445,13 @@ function renderAbout() {
   const about = $('about');
   const table = el('table');
   const rows = [
-    ['Model', `${info.model} — ${info.estimator}`],
+    ['Model', info.estimator ? `${info.model} — ${info.estimator}` : info.model],
+    ['Model name from', info.model_name_source],
     ['Predictions from', info.model_api_url ? `${info.model_source}: ${info.model_api_url}/predict` : info.model_source],
     ['Input features', info.features.join(', ')],
     ['Places supported', `${info.supported_places} sensors (device_name is one-hot encoded)`],
-    ['Validation', `MAE ${metrics.mae_ug_m3} µg/m³ · RMSE ${metrics.rmse_ug_m3} µg/m³ · R² ${metrics.r2} — ${metrics.setup}`],
+    ['Validation', metrics ? `MAE ${metrics.mae_ug_m3} µg/m³ · RMSE ${metrics.rmse_ug_m3} µg/m³ · R² ${metrics.r2} — ${metrics.setup}`
+      : 'Not shown: no validation metrics are stored for this model.'],
     ['Time convention', info.time_convention],
     ['Limitation', info.limitation],
   ];
