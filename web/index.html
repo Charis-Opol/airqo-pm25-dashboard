@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AirQo PM2.5 dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root {
+    --bg: #F9FAFB; --surface: #FFFFFF; --border: #E5E7EB; --text: #111827;
+    --muted: #6B7280; --primary: #BE123C; --primary-dark: #9F1239; --soft: #F3F4F6;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 17px/1.5 Inter, system-ui, sans-serif; }
+  header { background: var(--surface); border-bottom: 1px solid var(--border); }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 16px; }
+  header .wrap { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; padding-top: 18px; padding-bottom: 18px; }
+  h1 { font-size: 26px; margin: 0; letter-spacing: -0.02em; }
+  h2 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 15px; margin: 0; }
+  main { padding: 20px 0 48px; display: grid; gap: 18px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 18px; box-shadow: 0 1px 2px rgba(16,24,40,.05); min-width: 0; }
+  .head { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; justify-content: space-between; margin-bottom: 12px; }
+  .badge { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--border); border-radius: 999px; padding: 6px 14px; font-size: 15px; font-weight: 500; background: var(--surface); }
+  .badge.ok { color: #166534; border-color: #BBF7D0; background: #F0FDF4; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: #16A34A; }
+  .spinner { width: 15px; height: 15px; border: 2px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .tag { display: inline-block; font-size: 13px; font-weight: 600; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--soft); color: #374151; white-space: nowrap; }
+  .tag.observed { background: #ECFDF5; border-color: #A7F3D0; color: #065F46; }
+  .tag.assumed { background: #FFF7ED; border-color: #FED7AA; color: #9A3412; }
+  .controls { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr auto; gap: 12px; align-items: end; }
+  .form-grid { display: grid; grid-template-columns: repeat(4, 1fr) auto; gap: 12px; align-items: end; }
+  label { display: grid; gap: 5px; font-size: 14px; font-weight: 500; color: #374151; }
+  input, select { font: inherit; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: #fff; width: 100%; min-width: 0; }
+  input:focus, select:focus { outline: 2px solid #FDA4AF; border-color: var(--primary); }
+  button { font: inherit; font-weight: 600; padding: 10px 18px; border: 0; border-radius: 8px; background: var(--primary); color: #fff; cursor: pointer; transition: background .15s; }
+  button:hover { background: var(--primary-dark); }
+  button.ghost { background: var(--soft); color: var(--text); border: 1px solid var(--border); font-weight: 500; padding: 6px 12px; font-size: 14px; }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .stat { border-left: 8px solid var(--border); }
+  .stat .label { color: var(--muted); font-size: 15px; font-weight: 500; }
+  .stat .value { font-size: 40px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; }
+  .stat .unit { font-size: 16px; font-weight: 500; color: var(--muted); }
+  .pill { display: inline-block; padding: 3px 12px; border-radius: 999px; font-size: 14px; font-weight: 600; margin-top: 6px; }
+  .sharebar { display: flex; height: 30px; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); background: var(--soft); }
+  .sharebar div { height: 100%; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; font-size: 14px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .sw { width: 14px; height: 14px; border-radius: 4px; display: inline-block; border: 1px solid rgba(0,0,0,.12); }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  #chart { width: 100%; height: 430px; }
+  #map { height: 380px; border-radius: 8px; border: 1px solid var(--border); }
+  .cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+  .cal .dow { font-size: 13px; color: var(--muted); text-align: center; font-weight: 500; }
+  .cal .day { aspect-ratio: 1.25; border-radius: 6px; padding: 5px 7px; font-size: 14px; font-weight: 600; display: flex; flex-direction: column; justify-content: space-between; }
+  .cal .day small { font-weight: 500; font-size: 12px; }
+  .metrics { font-size: 16px; margin: 8px 0 0; }
+  .result { border-radius: 10px; padding: 16px 18px; margin-top: 14px; display: none; }
+  .result .big { font-size: 34px; font-weight: 700; }
+  pre { background: #0F172A; color: #E2E8F0; padding: 14px; border-radius: 8px; overflow-x: auto; font-size: 13.5px; line-height: 1.45; margin: 6px 0 0; white-space: pre-wrap; word-break: break-word; }
+  .codehead { display: flex; justify-content: space-between; align-items: center; margin-top: 14px; font-size: 14px; font-weight: 600; color: #374151; }
+  .error { color: #B91C1C; font-weight: 500; }
+  table { border-collapse: collapse; width: 100%; font-size: 15px; }
+  td, th { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  code { background: var(--soft); padding: 1px 6px; border-radius: 5px; font-size: 14px; }
+  @media (max-width: 860px) {
+    .controls, .form-grid, .two { grid-template-columns: 1fr; }
+    .stats { grid-template-columns: 1fr; }
+    .stat .value { font-size: 34px; }
+    #chart { height: 360px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div>
+      <h1>AirQo PM2.5 dashboard</h1>
+      <p class="sub">Model estimates of hourly PM2.5 for AirQo sensors, August 2026 (times in UTC)</p>
+    </div>
+    <span class="badge" id="status"><span class="spinner"></span>Waking up the model API...</span>
+  </div>
+</header>
+
+<div class="wrap">
+<main>
+  <section class="card">
+    <div class="controls">
+      <label>Place
+        <input id="place" list="placeList" placeholder="Start typing a place name..." autocomplete="off">
+        <datalist id="placeList"></datalist>
+      </label>
+      <label>From <input id="start" type="date" value="2026-08-01" min="2026-08-01" max="2026-08-31"></label>
+      <label>To <input id="end" type="date" value="2026-08-31" min="2026-08-01" max="2026-08-31"></label>
+      <label>Resolution
+        <select id="resolution"><option value="hourly">Hourly</option><option value="daily">Daily mean</option></select>
+      </label>
+      <button id="load">Show</button>
+    </div>
+    <p class="sub" id="placeNote" style="margin-top:10px"></p>
+  </section>
+
+  <section class="stats" id="stats"></section>
+
+  <section class="card">
+    <div class="head">
+      <div><h2>Share of time in each PM2.5 category</h2><p class="sub">Based on predicted values in the selected range</p></div>
+      <span class="tag inputTag">&nbsp;</span>
+    </div>
+    <div class="sharebar" id="sharebar"></div>
+    <div class="legend" id="shareLegend"></div>
+  </section>
+
+  <section class="card">
+    <div class="head">
+      <div><h2>Predicted PM2.5 over time</h2><p class="sub">Shaded bands are the PM2.5 categories. Predictions are model estimates.</p></div>
+      <span class="tag inputTag">&nbsp;</span>
+    </div>
+    <div id="chart"></div>
+    <p class="metrics" id="metrics"></p>
+  </section>
+
+  <div class="two">
+    <section class="card">
+      <div class="head">
+        <div><h2>Daily calendar</h2><p class="sub">Daily mean predicted PM2.5 (µg/m³); grey = outside the selected range</p></div>
+        <span class="tag inputTag">&nbsp;</span>
+      </div>
+      <div class="cal" id="calendar"></div>
+    </section>
+    <section class="card">
+      <div class="head">
+        <div><h2>Places</h2><p class="sub">Coloured by mean predicted category for August. Click a place to select it.</p></div>
+        <span class="tag" id="mapTag">&nbsp;</span>
+      </div>
+      <div id="map"></div>
+      <p class="sub" id="mapNote" style="margin-top:8px"></p>
+    </section>
+  </div>
+
+  <section class="card">
+    <div class="head">
+      <div><h2>Try the model</h2><p class="sub">Sends a JSON <code>POST</code> to <code>/predict</code></p></div>
+      <span class="tag">inputs you enter (not measurements)</span>
+    </div>
+    <div class="form-grid">
+      <label>Place <input id="fPlace" list="placeList" autocomplete="off"></label>
+      <label>Date and time (UTC) <input id="fTime" type="datetime-local" value="2026-08-14T09:00"></label>
+      <label>Temperature (°C) <input id="fTemp" type="number" step="0.1" value="24.5"></label>
+      <label>Humidity (%) <input id="fHum" type="number" step="1" min="0" max="100" value="71"></label>
+      <button id="predict">Predict</button>
+    </div>
+    <div class="result" id="result"></div>
+    <p class="error" id="formError"></p>
+    <div class="codehead"><span>Request (POST <span class="origin"></span>/predict)</span></div>
+    <pre id="reqJson">Press Predict to see the request.</pre>
+    <div class="codehead"><span>Response</span></div>
+    <pre id="resJson">—</pre>
+    <div class="codehead"><span>curl example</span><button class="ghost" id="copyCurl">Copy</button></div>
+    <pre id="curl"></pre>
+  </section>
+
+  <section class="card">
+    <h2>About the model</h2>
+    <div id="about" style="margin-top:10px"></div>
+  </section>
+</main>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const API = '';
+let info = null, places = [], map = null, markers = {};
+
+const getJson = async (url, options) => {
+  const response = await fetch(API + url, options);
+  const body = await response.json();
+  if (!response.ok) {
+    const detail = body.detail;
+    throw Object.assign(new Error(typeof detail === 'string' ? detail : (detail && detail.message) || 'Request failed'), {body});
+  }
+  return body;
+};
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+const fmt = value => value == null ? '—' : Number(value).toFixed(1);
+// Readable text on a category colour (colours themselves are never changed).
+const textOn = hex => {
+  const [r, g, b] = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
+  return (0.299 * r + 0.587 * g + 0.114 * b) > 150 ? '#111827' : '#FFFFFF';
+};
+const el = (tag, props = {}, style = {}) => {
+  const node = Object.assign(document.createElement(tag), props);
+  Object.assign(node.style, style);
+  return node;
+};
+const setTag = (node, label) => {
+  node.textContent = label;
+  node.className = node.className.replace(/ ?(observed|assumed)\b/g, '') +
+    (label === 'observed inputs' ? ' observed' : label.includes('assumed') ? ' assumed' : '');
+};
+
+async function waitForApi() {
+  for (;;) {
+    try {
+      const health = await getJson('/health');
+      if (health.status === 'ok') break;
+    } catch (error) { /* instance still waking up */ }
+    await sleep(3000);
+  }
+  $('status').className = 'badge ok';
+  $('status').replaceChildren(el('span', {className: 'dot'}), 'Model API ready');
+}
+
+async function init() {
+  document.querySelectorAll('.origin').forEach(node => node.textContent = location.origin);
+  await waitForApi();
+  [info, {places}] = await Promise.all([getJson('/api/model-info'), getJson('/api/places')]);
+  $('placeList').replaceChildren(...places.map(place => el('option', {value: place.name})));
+  const first = places.find(place => place.has_august_actuals) || places[0];
+  $('place').value = first.name;
+  $('fPlace').value = first.name;
+  renderAbout();
+  renderMap();
+  updateCurl(formBody());
+  loadPlace();
+}
+
+async function loadPlace() {
+  const name = $('place').value.trim();
+  const query = `place=${encodeURIComponent(name)}&start=${$('start').value}&end=${$('end').value}`;
+  $('placeNote').className = 'sub';
+  $('placeNote').textContent = 'Loading...';
+  try {
+    const hourly = await getJson(`/api/august?${query}&resolution=hourly`);
+    const daily = await getJson(`/api/august?${query}&resolution=daily`);
+    const shown = $('resolution').value === 'daily' ? daily : hourly;
+    const summary = hourly.input_source_summary;
+    document.querySelectorAll('.inputTag').forEach(node => setTag(node, summary.label));
+    const place = hourly.place;
+    $('placeNote').textContent =
+      `${place.name} · sensor ${place.device_name} · ` +
+      `${Math.round(summary.observed_share * 100)}% of hours use observed temperature and humidity, ` +
+      `${Math.round(summary.assumed_profile_share * 100)}% use the place's typical hourly profile from January–June 2026 (assumed). ` +
+      (place.has_august_actuals ? 'Actual PM2.5 readings exist for this place.' : 'No actual PM2.5 readings exist for this place in August.');
+    renderStats(shown);
+    renderShare(shown);
+    renderChart(shown, hourly.metrics);
+    renderCalendar(daily);
+    $('fPlace').value = place.name;
+  } catch (error) {
+    $('placeNote').className = 'error';
+    $('placeNote').textContent = error.message;
+  }
+}
+
+function renderStats(data) {
+  const values = data.points.map(point => point.predicted_pm25_ug_m3);
+  const pick = fn => data.points[values.indexOf(fn(...values))];
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  const cats = info.aqi_categories;
+  const meanCat = cats.find(c => c.upper_ug_m3 == null || mean <= c.upper_ug_m3);
+  const cards = [
+    ['Mean predicted PM2.5', mean, meanCat.name, meanCat.color],
+    ['Maximum predicted PM2.5', pick(Math.max).predicted_pm25_ug_m3, pick(Math.max).aqi_category, pick(Math.max).color],
+    ['Minimum predicted PM2.5', pick(Math.min).predicted_pm25_ug_m3, pick(Math.min).aqi_category, pick(Math.min).color],
+  ];
+  $('stats').replaceChildren(...cards.map(([label, value, category, color]) => {
+    const card = el('div', {className: 'card stat'}, {borderLeftColor: color});
+    const number = el('div', {className: 'value', textContent: fmt(value) + ' '});
+    number.append(el('span', {className: 'unit', textContent: 'µg/m³'}));
+    const row = el('div');
+    row.append(el('span', {className: 'pill', textContent: category}, {background: color, color: textOn(color)}));
+    card.append(el('div', {className: 'label', textContent: `${label} (${data.resolution})`}), number, row,
+      el('div', {}, {marginTop: '8px'}));
+    card.lastChild.append(el('span', {className: 'tag' + tagClass(data.input_source_summary.label), textContent: data.input_source_summary.label}));
+    return card;
+  }));
+}
+const tagClass = label => label === 'observed inputs' ? ' observed' : label.includes('assumed') ? ' assumed' : '';
+
+function renderShare(data) {
+  const total = data.points.length;
+  const bars = [], legend = [];
+  for (const category of info.aqi_categories) {
+    const count = data.points.filter(point => point.aqi_category === category.name).length;
+    const share = 100 * count / total;
+    if (count) bars.push(el('div', {title: `${category.name}: ${share.toFixed(1)}%`}, {width: share + '%', background: category.color}));
+    const item = el('span');
+    item.append(el('i', {className: 'sw'}, {background: category.color}), `${category.name} ${share.toFixed(1)}%`);
+    legend.push(item);
+  }
+  $('sharebar').replaceChildren(...bars);
+  $('shareLegend').replaceChildren(...legend);
+}
+
+function renderChart(data, metrics) {
+  const x = data.points.map(point => point.timestamp);
+  const predicted = data.points.map(point => point.predicted_pm25_ug_m3);
+  const actual = data.points.map(point => point.actual_pm25_ug_m3);
+  const hasActual = actual.some(value => value != null);
+  const top = Math.max(...predicted, ...actual.filter(value => value != null), 40) * 1.12;
+  const shapes = [], annotations = [];
+  for (const category of info.aqi_categories) {
+    if (category.lower_ug_m3 >= top) continue;
+    const upper = Math.min(category.upper_ug_m3 == null ? top : category.upper_ug_m3, top);
+    shapes.push({type: 'rect', xref: 'paper', x0: 0, x1: 1, yref: 'y', y0: category.lower_ug_m3, y1: upper,
+                 fillcolor: category.color, opacity: 0.22, line: {width: 0}, layer: 'below'});
+    annotations.push({xref: 'paper', x: 1, xanchor: 'right', yref: 'y', y: upper, yanchor: 'top',
+                      text: category.name, showarrow: false, font: {size: 12, color: '#374151'}});
+  }
+  const traces = [{
+    x, y: predicted, name: 'Predicted PM2.5 (model estimate)', mode: 'lines', line: {color: '#111827', width: 2.2},
+    customdata: data.points.map(point => [point.aqi_category, point.input_source]),
+    hovertemplate: '%{x}<br>Predicted %{y:.1f} µg/m³<br>%{customdata[0]}<br>Inputs: %{customdata[1]}<extra></extra>',
+  }];
+  if (hasActual) traces.push({
+    x, y: actual, name: 'Actual PM2.5 (sensor reading)', mode: 'lines', connectgaps: false,
+    line: {color: '#2a78d6', width: 1.6, dash: 'dot'}, hovertemplate: '%{x}<br>Actual %{y:.1f} µg/m³<extra></extra>',
+  });
+  Plotly.react('chart', traces, {
+    margin: {l: 62, r: 14, t: 10, b: 58}, font: {family: 'Inter, sans-serif', size: 14}, shapes, annotations,
+    xaxis: {title: 'Date and time (UTC)', gridcolor: '#EEF0F3'},
+    yaxis: {title: 'PM2.5 (µg/m³)', range: [0, top], gridcolor: '#EEF0F3'},
+    legend: {orientation: 'h', y: 1.12}, paper_bgcolor: '#fff', plot_bgcolor: '#fff', hovermode: 'closest',
+  }, {responsive: true, displayModeBar: false});
+  $('metrics').textContent = metrics
+    ? `Against actual readings: MAE ${fmt(metrics.mae_ug_m3)} µg/m³ · RMSE ${fmt(metrics.rmse_ug_m3)} µg/m³ (${metrics.hours_compared} hourly points with a reading in this range).`
+    : 'No actual PM2.5 readings exist for this place in the selected range, so MAE and RMSE cannot be shown.';
+}
+
+function renderCalendar(daily) {
+  const byDay = Object.fromEntries(daily.points.map(point => [point.timestamp, point]));
+  const cells = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(name => el('div', {className: 'dow', textContent: name}));
+  for (let blank = 0; blank < 5; blank++) cells.push(el('div'));  // 1 Aug 2026 is a Saturday
+  for (let day = 1; day <= 31; day++) {
+    const point = byDay[`2026-08-${String(day).padStart(2, '0')}`];
+    const color = point ? point.color : info.missing_color;
+    const cell = el('div', {className: 'day', title: point
+      ? `${point.timestamp}: ${fmt(point.predicted_pm25_ug_m3)} µg/m³, ${point.aqi_category} (${point.input_source} inputs)` : 'No data in range'},
+      {background: color, color: textOn(color)});
+    cell.append(el('span', {textContent: day}), el('small', {textContent: point ? fmt(point.predicted_pm25_ug_m3) : ''}));
+    cells.push(cell);
+  }
+  $('calendar').replaceChildren(...cells);
+}
+
+function renderMap() {
+  const located = places.filter(place => place.latitude != null);
+  map = L.map('map', {scrollWheelZoom: false});
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 18, attribution: '&copy; OpenStreetMap contributors'}).addTo(map);
+  for (const place of located) {
+    const marker = L.circleMarker([place.latitude, place.longitude], {radius: 7, color: '#374151', weight: 1, fillColor: place.color, fillOpacity: 0.95}).addTo(map);
+    const inputs = place.august_observed_input_share === 0 ? 'assumed inputs'
+      : place.august_observed_input_share === 1 ? 'observed inputs' : `observed + assumed inputs (${Math.round(place.august_observed_input_share * 100)}% observed)`;
+    marker.bindTooltip(`${place.name}: mean ${fmt(place.august_mean_predicted_pm25_ug_m3)} µg/m³, ${place.august_mean_aqi_category} (${inputs})`);
+    marker.on('click', () => { $('place').value = place.name; loadPlace(); });
+  }
+  map.fitBounds(L.latLngBounds(located.map(place => [place.latitude, place.longitude])).pad(0.05));
+  const withObserved = places.filter(place => place.august_observed_input_share > 0).length;
+  setTag($('mapTag'), 'observed + assumed inputs');
+  $('mapNote').textContent = `${located.length} of ${places.length} places have coordinates in the source data and are shown. ` +
+    `${withObserved} places have observed August temperature and humidity; the rest use assumed profiles.`;
+}
+
+function formBody() {
+  const time = $('fTime').value;
+  return {
+    device_name: $('fPlace').value.trim(),
+    timestamp: time.length === 16 ? time + ':00' : time,
+    temperature: $('fTemp').value === '' ? null : Number($('fTemp').value),
+    humidity: $('fHum').value === '' ? null : Number($('fHum').value),
+  };
+}
+function updateCurl(body) {
+  $('curl').textContent = `curl -X POST "${location.origin}/predict" \\\n  -H "Content-Type: application/json" \\\n  -d '${JSON.stringify(body)}'`;
+}
+async function runPredict() {
+  const body = formBody();
+  $('reqJson').textContent = JSON.stringify(body, null, 2);
+  updateCurl(body);
+  $('formError').textContent = '';
+  $('result').style.display = 'none';
+  try {
+    const response = await getJson('/predict', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+    $('resJson').textContent = JSON.stringify(response, null, 2);
+    const prediction = response.predictions[0];
+    const box = $('result');
+    Object.assign(box.style, {display: 'block', background: prediction.color, color: textOn(prediction.color)});
+    box.replaceChildren(
+      el('div', {className: 'big', textContent: `${fmt(prediction.predicted_pm25_ug_m3)} µg/m³`}),
+      el('div', {textContent: `${prediction.aqi_category} · model estimate for ${prediction.device_name} at ${prediction.timestamp} UTC, from the temperature and humidity you entered`}, {fontWeight: 600}));
+  } catch (error) {
+    $('formError').textContent = error.message;
+    $('resJson').textContent = JSON.stringify(error.body || {error: error.message}, null, 2).slice(0, 1500);
+  }
+}
+
+function renderAbout() {
+  const metrics = info.validation_metrics;
+  const about = $('about');
+  const table = el('table');
+  const rows = [
+    ['Model', `${info.model} — ${info.estimator}`],
+    ['Input features', info.features.join(', ')],
+    ['Places supported', `${info.supported_places} sensors (device_name is one-hot encoded)`],
+    ['Validation', `MAE ${metrics.mae_ug_m3} µg/m³ · RMSE ${metrics.rmse_ug_m3} µg/m³ · R² ${metrics.r2} — ${metrics.setup}`],
+    ['Time convention', info.time_convention],
+    ['Limitation', info.limitation],
+  ];
+  for (const [name, value] of rows) {
+    const row = el('tr');
+    row.append(el('th', {textContent: name}, {whiteSpace: 'nowrap', verticalAlign: 'top'}), el('td', {textContent: value}));
+    table.append(row);
+  }
+  const legend = el('div', {className: 'legend'});
+  for (const category of info.aqi_categories) {
+    const item = el('span');
+    const range = category.upper_ug_m3 == null ? `above ${category.lower_ug_m3}` : `${category.lower_ug_m3 === 0 ? '0' : '>' + category.lower_ug_m3}–${category.upper_ug_m3}`;
+    item.append(el('i', {className: 'sw'}, {background: category.color}), `${category.name} (${range} µg/m³)`);
+    legend.append(item);
+  }
+  about.replaceChildren(table, el('p', {className: 'sub', textContent: 'PM2.5 categories'}, {margin: '14px 0 0'}), legend);
+}
+
+$('load').addEventListener('click', loadPlace);
+$('resolution').addEventListener('change', loadPlace);
+$('place').addEventListener('change', loadPlace);
+$('predict').addEventListener('click', runPredict);
+$('copyCurl').addEventListener('click', async () => {
+  await navigator.clipboard.writeText($('curl').textContent);
+  $('copyCurl').textContent = 'Copied';
+  setTimeout(() => $('copyCurl').textContent = 'Copy', 1500);
+});
+init();
+</script>
+</body>
+</html>
