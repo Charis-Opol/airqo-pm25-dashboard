@@ -4,18 +4,20 @@ Run locally:  uvicorn app.main:app --reload
 """
 import json
 import math
+import secrets
 from typing import List, Optional, Union
 
 import numpy as np
 import pandas as pd
-from fastapi import Body, FastAPI, HTTPException, Query
+from fastapi import Body, Depends, FastAPI, HTTPException, Query, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.security import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from app import predictor
+from app import config, predictor
 from app.aqi import MISSING_COLOR, categories_table, category_color, pm25_aqi_category
 from app.predictor import ROOT, TIME_FEATURES
 
@@ -34,8 +36,23 @@ app = FastAPI(
     version='1.0.0',
 )
 app.add_middleware(
-    CORSMiddleware, allow_origins=['*'], allow_methods=['*'], allow_headers=['*']
+    CORSMiddleware, allow_origins=config.ALLOWED_ORIGINS, allow_methods=['*'], allow_headers=['*']
 )
+
+api_key_header = APIKeyHeader(
+    name='X-API-Key', auto_error=False,
+    description='Needed only when the service was started with API_KEY set.')
+
+
+def require_api_key(key: Optional[str] = Depends(api_key_header)):
+    """Check the X-API-Key header when API_KEY is configured."""
+    if config.API_KEY and not (key and secrets.compare_digest(key, config.API_KEY)):
+        raise HTTPException(
+            status_code=401,
+            detail='Missing or wrong API key. Send it in the X-API-Key header.')
+
+
+PROTECTED = [Depends(require_api_key)]
 
 # --------------------------------------------------------------------------
 # Data: August 2026 inputs and the places the model supports
@@ -213,7 +230,16 @@ def health():
     return {'status': 'ok', 'model_loaded': predictor.pipeline is not None}
 
 
-@app.get('/api/model-info')
+@app.get('/config.js', include_in_schema=False)
+def ui_config():
+    """Dashboard settings from the environment (overrides web/config.js)."""
+    settings = {'apiBaseUrl': config.UI_API_BASE_URL, 'apiKey': config.UI_API_KEY}
+    return Response(
+        f'window.APP_CONFIG = {json.dumps(settings)};',
+        media_type='application/javascript', headers={'Cache-Control': 'no-store'})
+
+
+@app.get('/api/model-info', dependencies=PROTECTED)
 def model_info():
     return {
         'model': predictor.model_name,
@@ -235,7 +261,7 @@ def model_info():
     }
 
 
-@app.get('/api/places')
+@app.get('/api/places', dependencies=PROTECTED)
 def places():
     return {'count': len(PLACES), 'places': PLACES}
 
@@ -267,7 +293,7 @@ def _parse_bound(value, name, end_of_day=False):
     return bound
 
 
-@app.get('/api/august')
+@app.get('/api/august', dependencies=PROTECTED)
 def august_series(
     place: str = Query(..., description='Place name or device id from /api/places'),
     start: str = Query('2026-08-01', description='First day (UTC)'),
@@ -354,6 +380,7 @@ PREDICT_USAGE = {
     'message': 'Send a JSON POST to this URL to get a PM2.5 prediction.',
     'method': 'POST',
     'content_type': 'application/json',
+    'api_key': 'If this service has an API key set, send it in the X-API-Key header.',
     'example_request': EXAMPLE_ROW,
     'example_batch_request': {'rows': [EXAMPLE_ROW]},
     'response_shape': {
@@ -403,8 +430,9 @@ def predict(body: Union[PredictBatch, PredictRow] = Body(..., openapi_examples=P
     return {'count': len(predictions), 'model': predictor.model_name, 'predictions': predictions}
 
 
-app.post('/predict', response_model=PredictResponse, summary='Predict PM2.5')(predict)
-app.post('/api/predict', response_model=PredictResponse, summary='Predict PM2.5 (alias of /predict)')(predict)
+app.post('/predict', response_model=PredictResponse, summary='Predict PM2.5', dependencies=PROTECTED)(predict)
+app.post('/api/predict', response_model=PredictResponse, summary='Predict PM2.5 (alias of /predict)',
+         dependencies=PROTECTED)(predict)
 
 # The dashboard (web/) is served from the same service; keep this last.
 app.mount('/', StaticFiles(directory=ROOT / 'web', html=True), name='web')

@@ -89,3 +89,15 @@ def test_unknown_place_is_400():
     response = client.post('/predict', json=dict(GOOD_ROW, device_name='Atlantis'))
     assert response.status_code == 400
     assert len(response.json()['detail']['supported_places']) > 0
+
+
+def test_api_key_is_enforced_when_set(monkeypatch):
+    from app import config
+    monkeypatch.setattr(config, 'API_KEY', 'secret-for-test')
+    assert client.get('/health').status_code == 200
+    assert client.get('/api/places').status_code == 401
+    assert client.post('/predict', json=GOOD_ROW).status_code == 401
+    assert client.post('/predict', json=GOOD_ROW, headers={'X-API-Key': 'wrong'}).status_code == 401
+    headers = {'X-API-Key': 'secret-for-test'}
+    assert client.get('/api/places', headers=headers).status_code == 200
+    assert client.post('/predict', json=GOOD_ROW, headers=headers).status_code == 200

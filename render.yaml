@@ -9,3 +9,12 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.13.7
+      # Optional settings, see .env.example. Set the values in the Render dashboard.
+      - key: API_KEY
+        sync: false
+      - key: ALLOWED_ORIGINS
+        value: "*"
+      - key: UI_API_BASE_URL
+        sync: false
+      - key: UI_API_KEY
+        sync: false

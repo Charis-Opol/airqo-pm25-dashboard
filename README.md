@@ -23,6 +23,36 @@ uvicorn app.main:app --reload
 Open <http://127.0.0.1:8000> for the dashboard and <http://127.0.0.1:8000/docs> for the API docs.
 Run the smoke test with `pip install pytest httpx` then `python -m pytest tests`.
 
+## Settings (.env)
+
+All settings are optional. Copy `.env.example` to `.env` for local runs (the app reads it on start;
+`.env` is not committed). On Render, add the same names under **Environment**.
+
+| Name | Used by | Meaning |
+| --- | --- | --- |
+| `API_KEY` | API | If set, `/api/*` and `POST /predict` need the header `X-API-Key: <key>` (otherwise `401`). Empty = open API. `/health` is always open. |
+| `ALLOWED_ORIGINS` | API | Sites allowed to call the API from a browser, comma separated. Default `*`. |
+| `UI_API_BASE_URL` | Dashboard | URL of the API when it runs on another service, e.g. `https://airqo-pm25-api.onrender.com`. Empty = same service. |
+| `UI_API_KEY` | Dashboard | Key the dashboard sends as `X-API-Key`. Empty = reuse `API_KEY`. |
+
+The dashboard gets `UI_API_BASE_URL` and `UI_API_KEY` from `/config.js`, which the app fills from these
+settings. If `web/` is hosted on its own as static files, put the two values in `web/config.js` instead.
+The dashboard only calls routes that exist in the API: `/health`, `/api/model-info`, `/api/places`,
+`/api/august` and `POST /predict`.
+
+**The dashboard key is not secret.** A browser page cannot hide a key, so anyone who can open the
+dashboard can read it. Use it to keep casual callers out, not to protect anything sensitive.
+
+With a key set, add the header to every call:
+
+```bash
+curl -X POST "<base-url>/predict"   -H "Content-Type: application/json"   -H "X-API-Key: <your-api-key>"   -d '{"device_name": "Kyarwabuganda", "timestamp": "2026-08-14T09:00:00", "temperature": 24.5, "humidity": 71}'
+```
+
+```python
+requests.post(f"{base_url}/predict", json=row, headers={"X-API-Key": "<your-api-key>"})
+```
+
 ## Using the API
 
 | Endpoint | What it returns |
@@ -92,7 +122,7 @@ Response (always this shape):
 - Model-ready rows also work: leave out `timestamp` and send `hour_sin`, `hour_cos`,
   `day_of_week_sin`, `day_of_week_cos`, `month_sin`, `month_cos` (the same columns as `pm25_inference.py`).
 - Errors: `422` with a clear message for bad input (text instead of a number, humidity outside 0–100,
-  unreadable timestamp, more than 1000 rows); `400` with the list of supported places for an unknown `device_name`.
+  unreadable timestamp, more than 1000 rows); `401` for a missing or wrong API key when one is set; `400` with the list of supported places for an unknown `device_name`.
 
 ### Time convention
 
@@ -137,5 +167,6 @@ They live in one place, `app/aqi.py`, and reach the dashboard through `/api/mode
 2. On Render choose **New > Blueprint** (uses `render.yaml`) or **New > Web Service**.
 3. Connect the GitHub repo.
 4. Pick the **Free** plan. Build: `pip install -r requirements.txt`. Start: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`. Health check: `/health`. Env var `PYTHON_VERSION=3.13.7`.
+   Optional: add `API_KEY` (and the other names in `.env.example`) under **Environment**.
 5. Deploy and copy the public URL; the prediction endpoint is `<public-url>/predict`.
 6. Free instances sleep when idle, so open the site a few minutes before presenting.
