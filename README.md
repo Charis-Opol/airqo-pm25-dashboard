@@ -32,6 +32,8 @@ All settings are optional. Copy `.env.example` to `.env` for local runs (the app
 | --- | --- | --- |
 | `API_KEY` | API | If set, `/api/*` and `POST /predict` need the header `X-API-Key: <key>` (otherwise `401`). Empty = open API. `/health` is always open. |
 | `ALLOWED_ORIGINS` | API | Sites allowed to call the API from a browser, comma separated. Default `*`. |
+| `MODEL_API_URL` | API | Model service that makes the predictions, e.g. `https://airqo-cole-charis-assgnmnt.onrender.com`. Empty = use the model file in `model/`. |
+| `MODEL_API_KEY` | API | Sent to the model service as `X-API-Key`. Empty if it needs no key. |
 | `UI_API_BASE_URL` | Dashboard | URL of the API when it runs on another service, e.g. `https://airqo-pm25-api.onrender.com`. Empty = same service. |
 | `UI_API_KEY` | Dashboard | Key the dashboard sends as `X-API-Key`. Empty = reuse `API_KEY`. |
 
@@ -39,6 +41,16 @@ The dashboard gets `UI_API_BASE_URL` and `UI_API_KEY` from `/config.js`, which t
 settings. If `web/` is hosted on its own as static files, put the two values in `web/config.js` instead.
 The dashboard only calls routes that exist in the API: `/health`, `/api/model-info`, `/api/places`,
 `/api/august` and `POST /predict`.
+
+### Using a separate model service
+
+With `MODEL_API_URL` set, every prediction (the August charts and `POST /predict`) is made by that
+service. This app builds the model-ready rows (time features, place check), sends them to the
+service's `POST /predict` as `{"rows": [...]}` and adds the colour and response shape. It only uses the
+route that service has (`POST /predict`). The dashboard still talks to this app, not to the model
+service directly, because browsers are not allowed to call that service from another site.
+Places, August inputs, actual readings and colours are served by this app. If the model service
+cannot be reached the API answers `502`; a sleeping free Render instance can take about a minute to wake.
 
 **The dashboard key is not secret.** A browser page cannot hide a key, so anyone who can open the
 dashboard can read it. Use it to keep casual callers out, not to protect anything sensitive.

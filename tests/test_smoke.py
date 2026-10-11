@@ -9,7 +9,13 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app.aqi import AQI_COLORS
+from app import config, predictor
 from app.main import app
+
+# Tests must not depend on a local .env: no API key, and the comparison
+# with pm25_inference.py uses the local model file.
+config.API_KEY = ''
+config.MODEL_API_URL = ''
 
 client = TestClient(app)
 SAMPLES = json.loads(
@@ -38,7 +44,8 @@ def check(prediction, sample):
 
 
 def test_health():
-    assert client.get('/health').json() == {'status': 'ok', 'model_loaded': True}
+    health = client.get('/health').json()
+    assert health['status'] == 'ok' and health['model_loaded'] is True
 
 
 def test_single_matches_pm25_inference():
@@ -101,3 +108,31 @@ def test_api_key_is_enforced_when_set(monkeypatch):
     headers = {'X-API-Key': 'secret-for-test'}
     assert client.get('/api/places', headers=headers).status_code == 200
     assert client.post('/predict', json=GOOD_ROW, headers=headers).status_code == 200
+
+
+def test_remote_model_service_is_used_when_set(monkeypatch):
+    sent = {}
+
+    def fake_post(url, body):
+        sent['url'], sent['rows'] = url, body['rows']
+        return {'predictions': [{'predicted_pm25_ug_m3': 60.0, 'aqi_category': 'Unhealthy'}
+                                for _ in body['rows']]}
+
+    monkeypatch.setattr(config, 'MODEL_API_URL', 'https://model.example')
+    monkeypatch.setattr(predictor, '_post_json', fake_post)
+    body = client.post('/predict', json={'rows': [GOOD_ROW, GOOD_ROW]}).json()
+    assert sent['url'] == 'https://model.example/predict'
+    assert sorted(sent['rows'][0]) == sorted(FEATURES)
+    assert body['count'] == 2
+    assert body['predictions'][0]['predicted_pm25_ug_m3'] == 60.0
+    assert body['predictions'][0]['aqi_category'] == 'Unhealthy'
+    assert body['predictions'][0]['color'] == AQI_COLORS['Unhealthy']
+
+
+def test_remote_model_service_failure_is_502(monkeypatch):
+    def broken_post(url, body):
+        raise OSError('connection refused')
+
+    monkeypatch.setattr(config, 'MODEL_API_URL', 'https://model.example')
+    monkeypatch.setattr(predictor, '_post_json', broken_post)
+    assert client.post('/predict', json=GOOD_ROW).status_code == 502
