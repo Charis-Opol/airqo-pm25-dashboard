@@ -49,6 +49,9 @@ service. This app builds the model-ready rows (time features, place check), send
 service's `POST /predict` as `{"rows": [...]}` and adds the colour and response shape. It only uses the
 route that service has (`POST /predict`). The dashboard still talks to this app, not to the model
 service directly, because browsers are not allowed to call that service from another site.
+The model name shown on the dashboard and in API responses is the one the service reports at
+`GET /health`, so it always matches the model that is answering; the estimator details and validation
+metrics from the model file are shown only when that name matches the file.
 Places, August inputs, actual readings and colours are served by this app. If the model service
 cannot be reached the API answers `502`; a sleeping free Render instance can take about a minute to wake.
 

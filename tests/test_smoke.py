@@ -136,3 +136,21 @@ def test_remote_model_service_failure_is_502(monkeypatch):
     monkeypatch.setattr(config, 'MODEL_API_URL', 'https://model.example')
     monkeypatch.setattr(predictor, '_post_json', broken_post)
     assert client.post('/predict', json=GOOD_ROW).status_code == 502
+
+
+def test_model_name_comes_from_the_model_service(monkeypatch):
+    monkeypatch.setattr(config, 'MODEL_API_URL', 'https://model.example')
+    monkeypatch.setattr(predictor, '_remote_info', {'url': None, 'time': 0.0, 'value': None})
+    monkeypatch.setattr(predictor, '_get_json', lambda url: {'status': 'ok', 'model': 'Some other model'})
+    info = client.get('/api/model-info').json()
+    assert info['model'] == 'Some other model'
+    assert info['model_name_source'] == 'model service /health'
+    # File-based details describe a different model, so they are not shown.
+    assert info['estimator'] is None and info['validation_metrics'] is None
+
+
+def test_model_name_is_the_file_name_without_a_model_service():
+    info = client.get('/api/model-info').json()
+    assert info['model'] == predictor.model_name
+    assert info['model_name_source'] == 'local model file'
+    assert info['validation_metrics']['model_name'] == predictor.model_name

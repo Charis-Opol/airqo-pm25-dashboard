@@ -2,6 +2,7 @@
 pipeline -> z-score -> ug/m3 (target_scaler_mean/std) -> AQI category.
 """
 import json
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -102,6 +103,52 @@ def _predict_remote(frame):
 
 def model_source():
     return 'remote model service' if config.MODEL_API_URL else 'local model file'
+
+
+_remote_info = {'url': None, 'time': 0.0, 'value': None}
+REMOTE_INFO_SECONDS = 300
+
+
+def _get_json(url):
+    headers = {'X-API-Key': config.MODEL_API_KEY} if config.MODEL_API_KEY else {}
+    request = urllib.request.Request(url, headers=headers)
+    with urllib.request.urlopen(request, timeout=config.MODEL_API_TIMEOUT) as response:
+        return json.loads(response.read())
+
+
+def remote_model_info():
+    """What the model service says about itself (GET /health), or None.
+
+    Its answer looks like {"status": "ok", "model": "...", "features": [...]}.
+    Cached for a few minutes so the service is not asked on every request.
+    """
+    if not config.MODEL_API_URL:
+        return None
+    fresh = time.time() - _remote_info['time'] < REMOTE_INFO_SECONDS
+    if _remote_info['url'] == config.MODEL_API_URL and _remote_info['value'] and fresh:
+        return _remote_info['value']
+    try:
+        value = _get_json(config.MODEL_API_URL + '/health')
+        if not isinstance(value, dict) or not value.get('model'):
+            return None
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError):
+        return None
+    _remote_info.update(url=config.MODEL_API_URL, time=time.time(), value=value)
+    return value
+
+
+def current_model():
+    """Name of the model that makes the predictions, and where the name comes from.
+
+    With a model service configured the name is the one that service reports,
+    so the dashboard never shows a different model from the one answering.
+    """
+    remote = remote_model_info()
+    if remote:
+        return str(remote['model']), 'model service /health'
+    if config.MODEL_API_URL:
+        return model_name, 'local model file (model service did not answer /health)'
+    return model_name, 'local model file'
 
 
 def predict_pm25(frame):
