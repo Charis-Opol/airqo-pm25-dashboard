@@ -1,0 +1,8 @@
+{
+  "source": "deployment_outputs/deployment_metadata.json (train.ipynb run)",
+  "setup": "Chronological hold-out (test period 2-3 June 2026)",
+  "model_name": "SVR (tuned)",
+  "mae_ug_m3": 9.341,
+  "rmse_ug_m3": 15.138,
+  "r2": 0.338
+}

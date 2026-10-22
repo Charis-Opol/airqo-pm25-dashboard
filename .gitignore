@@ -1,23 +1,6 @@
-# Dependencies
-node_modules/
-.pnp
-.pnp.js
-
-# Production build
-dist/
-build/
-
-# Environment variables
-.env
-.env.local
-.env.*.local
-!.env.example
-
-# Python & Temporary
 __pycache__/
 *.pyc
 .pytest_cache/
 .venv/
-scratch_data/
-*.log
-.DS_Store
+*.env
+!.env.example.env
